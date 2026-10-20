@@ -2,7 +2,7 @@
 name: mutation-testing-ts
 description: 为 TypeScript/JavaScript 项目接入、修复或评审 StrykerJS 变异测试及 CI，涵盖 Vitest/Jest 适配、首次全量基线、PR 复用主分支基线增量执行、主分支更新基线、缓存失效和强制重建。当用户提到变异测试、mutation testing、Stryker、增量变异测试或变异测试 CI 时使用。仅用于 TypeScript/JavaScript 变异测试，不用于普通覆盖率、常规 CI 或数据库 mutation 操作。
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   short-description: TypeScript 变异测试接入与 CI 增量基线
 ---
 
@@ -15,7 +15,7 @@ metadata:
 1. 与项目兼容的 Stryker 配置和依赖锁文件。
 2. 增量命令 `mutation` 和强制重建命令 `mutation:full`，沿用已有同义命令也可。
 3. CI 工作流：首次全量、PR 读取主分支基线、主分支成功后保存基线。
-4. 使用说明：报告位置、缓存失效、手动重建、评分门禁和验证范围。
+4. 可预览和验证的缓存输入策略，以及报告位置、缓存失效、手动重建、评分门禁和验证范围。
 
 ## 1. 检查项目
 
@@ -57,6 +57,18 @@ metadata:
 
 先读取 [CI 基线设计](references/ci-baseline.md)。GitHub Actions 可从 [工作流模板](assets/mutation.yml) 开始适配；模板默认 main、Node 22、pnpm、根目录单包和 TypeScript 测试文件，复制后必须检查这些假设。
 
+将 [缓存键脚本](scripts/baseline-inputs.mjs) 复制到目标项目的 `.github/scripts/`，将
+[输入策略模板](assets/mutation-cache-inputs.json) 复制到 `.github/mutation-cache-inputs.json`。
+脚本无第三方依赖，需要 Git 与 Node.js 22.20+。不要让目标 CI 依赖 agent 的安装目录。
+
+先保留 `trackedByStryker: []`：默认哈希全部 Git 跟踪文件，新目录中的辅助输入自动纳入。
+检查实际 `mutate` 范围、测试 include/testMatch 和导入关系后，才把已确认由 Stryker 跟踪的源码及
+测试文件 glob 加入 `trackedByStryker`；范围内被排除的生成代码、辅助文件等用 `alwaysHash` 留在哈希中。
+不要根据常见文件后缀或目录名自动排除测试辅助代码。具体示例与限制见基线设计。
+
+运行脚本的 `--list` 查看最终哈希清单与交给 Stryker 跟踪的清单，按下方验证步骤实际改动文件检查键变化。
+如果无法确认排除范围，保留保守策略并说明更多改动会触发全量，不能为了复用速度放宽排除。
+
 | 场景 | 执行 | 基线写入 |
 | --- | --- | --- |
 | 首次接入、缓存缺失或不兼容 | 全量 | 仅可信主分支成功后保存 |
@@ -67,7 +79,7 @@ metadata:
 实现必须满足：
 
 - 使用分离的缓存 restore/save 操作，PR 不写共享基线。
-- 兼容性前缀包含系统、Node 和影响结果的非源码/非测试输入；每次保存追加唯一运行 ID 与 attempt。不可变缓存不能用固定 key 更新。
+- 兼容性前缀包含系统、Node 和输入摘要；脚本及策略本身也必须影响摘要。每次保存追加唯一运行 ID 与 attempt。不可变缓存不能用固定 key 更新。
 - restore fallback 只匹配兼容性前缀，不退回跨依赖或配置版本的宽泛前缀。
 - 主分支运行不主动互相取消；同一 PR 的新提交可取消旧运行。旧基线只影响性能，仍须由 Stryker 检查内容差异。
 - 允许手动 full，缓存缺失时自然退回全量，失败不覆盖基线。保留失败时可用的报告。
@@ -80,6 +92,9 @@ metadata:
 
 1. 运行项目要求的 lint、类型检查和相关测试；发现原分支已有失败时明确归因，必要的格式修复保持最小范围。
 2. 校验工作流语法。GitHub Actions 优先使用 actionlint，单纯 YAML 解析不能验证表达式与权限语义。
+   同时验证缓存输入：用 `--list` 确认 setup/helper、快照、fixture、未变异的跨包依赖、配置及锁文件均在哈希清单。
+   在临时 Git 工作区修改这些文件，确认键变化；新增目录的文件需先 `git add`，确认也改变键。
+   仅当已明确配置排除后，才验证普通变异源码及已跟踪测试的内容变化不改变兼容性键。保留验证记录。
 3. 在有真实测试覆盖的小型源码文件上，用独立的临时 incrementalFile 做三次验证：无基线生成、同样输入再次运行、带 `--force` 强制运行。
 4. 确认第二次确实记录 `result(s) are reused`，第三次不复用结果；只看到文件存在或命令成功不足以证明增量生效。
 5. 说明首次主分支 CI 负责建立完整范围的共享基线。单文件冒烟不能宣称全项目变异测试通过。

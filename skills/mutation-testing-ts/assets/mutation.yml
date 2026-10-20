@@ -1,6 +1,9 @@
 name: CI - Mutation Testing
 
-# Adapt main, Node version, package manager, config/input paths and namespace.
+# Adapt main, Node version, package manager and namespace.
+# Copy scripts/baseline-inputs.mjs to .github/scripts/ and
+# assets/mutation-cache-inputs.json to .github/ before using this template.
+# The helper requires Node >=22.20 (node:path.matchesGlob).
 on:
   pull_request:
     branches: ["main"]
@@ -42,21 +45,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Stryker compares mutated source and tracked tests. Hash other inputs.
-      # Add actual setup/helper/fixture/non-mutated dependency paths for this repo.
-      # TS tests are excluded precisely so .test.ts.snap remains included.
+      # Hash all Git-tracked inputs by default. Only omit verified Stryker-tracked
+      # source/test files via the explicit policy; new helpers are included.
+      - name: Show baseline input manifest
+        run: node .github/scripts/baseline-inputs.mjs .github/mutation-cache-inputs.json --list
+
       - name: Compute baseline compatibility key
         id: baseline-key
-        env:
-          INPUTS_HASH: >-
-            ${{ hashFiles('pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
-            'package.json', 'pnpm-workspace.yaml', '.npmrc', '.yarnrc.yml',
-            'stryker.config.*', 'vitest.config.*', 'jest.config.*', 'tsconfig*.json',
-            '.github/workflows/mutation.yml', 'tests/**', 'test/**', '__tests__/**',
-            '**/__snapshots__/**', 'fixtures/**', 'src/**/*.d.ts',
-            '!**/*.test.ts', '!**/*.test.tsx', '!**/*.spec.ts', '!**/*.spec.tsx',
-            '!**/node_modules/**', '!.stryker-tmp/**', '!reports/**') }}
-        run: echo "prefix=mutation-default-v1-${RUNNER_OS}-node${MUTATION_NODE_VERSION}-${INPUTS_HASH}" >> "$GITHUB_OUTPUT"
+        run: |
+          INPUTS_HASH="$(node .github/scripts/baseline-inputs.mjs .github/mutation-cache-inputs.json)"
+          echo "prefix=mutation-default-v2-${RUNNER_OS}-node${MUTATION_NODE_VERSION}-${INPUTS_HASH}" >> "$GITHUB_OUTPUT"
 
       # Only the trusted default branch saves this namespace.
       - name: Restore main mutation baseline

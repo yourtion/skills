@@ -32,7 +32,8 @@ Stryker 在沙箱中执行，node_modules 通常链接到真实安装目录。Vi
 
 - 明确在哪个工作目录安装依赖、执行 Stryker、读取配置、保存报告。
 - 每个包使用独立 namespace、报告路径和 concurrency 组；root lockfile、共享 tsconfig、跨包非变异依赖均纳入失效考虑。
-- 调整 cache-dependency-path、hashFiles 路径、artifact path 和 baseline path。GitHub hashFiles 从 checkout workspace 解析，不会跟随 run 的 working-directory 自动切换。
+- 调整 cache-dependency-path、缓存输入策略、artifact path 和 baseline path。缓存键脚本从 Git 根目录解析策略 glob，不随 run 的 working-directory 改变；在子目录执行时还需调整脚本和配置参数的位置。
+- 默认哈希整个 Git 仓库，包含跨包源码。只将本包实际 mutate 范围与已跟踪测试放入 `trackedByStryker`，不要将整个 workspace 源码排除；共享配置和其他包会自然影响摘要。
 - 跨包依赖不能被本包变异报告跟踪时，变化必须触发失效或全量重跑。
 
 ## 耗时与资源

@@ -4,6 +4,6 @@
 
 | 技能 | 用途 |
 | --- | --- |
-| [mutation-testing-ts](mutation-testing-ts/SKILL.md) | 为 TypeScript/JavaScript 项目接入或检查 StrykerJS 变异测试与 CI，实现首次全量、PR 增量及主分支基线更新。 |
+| [mutation-testing-ts](mutation-testing-ts/SKILL.md) | 为 TypeScript/JavaScript 项目接入或检查 StrykerJS 变异测试与 CI，实现首次全量、PR 增量、主分支基线更新及可验证的缓存输入策略。 |
 
 创建或改进技能时，优先使用当前 agent 已有、且支持本仓库目标路径的 `skill-creator`；不可用时才用 `pnpm scaffold <skill-name>` 复制最小模板。完成后统一运行 `pnpm check`。详细流程见[仓库说明](../README.md)和[贡献指南](../CONTRIBUTING.md)。
