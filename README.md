@@ -36,9 +36,9 @@ skills/
 templates/skill/
   SKILL.md.template           # 创建模板，不是可安装技能
 scripts/
-  new-skill.mjs               # 创建技能，拒绝覆盖
+  scaffold-skill.mjs          # 无可用 skill-creator 时复制模板
   validate-skills.mjs         # 格式与仓库约定检查
-tests/skills.test.mjs         # 正反例与脚手架测试
+tests/skills.test.mjs         # 正反例与模板兜底测试
 .github/workflows/validate.yml
 AGENTS.md                    # 仓库内 agent 协作约定
 CONTRIBUTING.md              # 人类贡献流程
@@ -55,10 +55,32 @@ git clone https://github.com/yourtion/skills.git
 cd skills
 pnpm install --frozen-lockfile
 
-# 创建后请补全所有 TODO，不会覆盖同名技能
-pnpm new my-skill
+```
 
-# 单独运行校验或测试
+### 创建或改进技能：优先 skill-creator
+
+先检查当前 agent 是否已提供 `skill-creator`，读取该版本的说明并按其实际调用方式使用。它可以帮助明确使用场景、设计触发描述、选择必要资源、编写指令，再通过验证和实际使用迭代。
+
+给它明确的仓库目标，例如：
+
+> 请使用当前可用的 skill-creator，为本仓库创建 my-skill，目标目录是 skills/my-skill。先结合具体任务确定触发条件、步骤和验收方法，只添加确有需要的资源，完成后运行仓库检查。
+
+`skill-creator` 并非所有 agent 都默认提供，不同版本的调用方式和写入位置也可能不同。仅当当前版本支持在指定仓库路径创建时使用；如果没有、不可用，或只支持个人技能库，使用下方模板兜底。不要为此自动安装它、写入个人技能目录或重新初始化已有技能。
+
+### 兜底：只复制最小模板
+
+```bash
+# 仅在当前 skill-creator 不可用于此仓库时使用；拒绝覆盖同名目录
+pnpm scaffold my-skill
+```
+
+此命令只替换模板中的名称并创建 `skills/my-skill/SKILL.md`，不设计触发条件、不生成技能内容，也不替代 `skill-creator`。手动补全 TODO、确认指令可执行后再提交。
+
+### 统一验证
+
+无论通过 `skill-creator` 还是模板创建，都运行相同的仓库检查：
+
+```bash
 pnpm validate
 pnpm test
 
@@ -66,7 +88,7 @@ pnpm test
 pnpm check
 ```
 
-完成技能后，在 [skills/README.md](skills/README.md) 添加名称、用途和 `SKILL.md` 链接。
+若所用 `skill-creator` 提供自己的验证步骤，也按其说明执行；本仓库的校验不依赖它。格式通过后仍需在目标 agent 中验证真实任务。完成后，在 [skills/README.md](skills/README.md) 添加名称、用途和 `SKILL.md` 链接。
 
 ### SKILL.md 最小格式
 

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { parseDocument } from 'yaml';
-import { createSkill } from '../scripts/new-skill.mjs';
+import { scaffoldSkill } from '../scripts/scaffold-skill.mjs';
 import { isSkillName, validateRepository, validateSkill } from '../scripts/validate-skills.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -132,18 +132,18 @@ test('CLI returns nonzero for invalid input and zero for a valid empty repositor
   assert.match(invalid.stderr, /description/);
 });
 
-test('new creates a named skill from the template without overwriting existing work', async (t) => {
+test('fallback scaffold copies a named template without overwriting existing work', async (t) => {
   const directory = await temporaryRepository(t);
   await mkdir(resolve(directory, 'templates/skill'), { recursive: true });
   await writeFile(resolve(directory, 'templates/skill/SKILL.md.template'), await readFile(resolve(root, 'templates/skill/SKILL.md.template')));
-  await createSkill('new-skill', directory);
+  await scaffoldSkill('new-skill', directory);
   const target = resolve(directory, 'skills/new-skill/SKILL.md');
   assert.match(await readFile(target, 'utf8'), /name: new-skill/);
   assert.equal((await validateRepository(directory)).errors.length, 0);
   await writeFile(target, 'keep this');
-  await assert.rejects(createSkill('new-skill', directory), { code: 'EEXIST' });
+  await assert.rejects(scaffoldSkill('new-skill', directory), { code: 'EEXIST' });
   assert.equal(await readFile(target, 'utf8'), 'keep this');
-  await assert.rejects(createSkill('../escape', directory), /名称/);
+  await assert.rejects(scaffoldSkill('../escape', directory), /名称/);
   assert.deepEqual(await readdir(resolve(directory, 'skills')), ['new-skill']);
 });
 
@@ -153,14 +153,14 @@ test('committed template uses an undiscoverable filename', async () => {
 });
 
 
-test('new refuses a symlinked skills parent without creating anything in its target', async (t) => {
+test('fallback scaffold refuses a symlinked skills parent without creating anything in its target', async (t) => {
   const directory = await temporaryRepository(t);
   const outside = await temporaryRepository(t);
   await rm(resolve(directory, 'skills'), { recursive: true });
   await symlink(resolve(outside, 'skills'), resolve(directory, 'skills'));
   await mkdir(resolve(directory, 'templates/skill'), { recursive: true });
   await writeFile(resolve(directory, 'templates/skill/SKILL.md.template'), source());
-  await assert.rejects(createSkill('example', directory), /普通目录/);
+  await assert.rejects(scaffoldSkill('example', directory), /普通目录/);
   assert.deepEqual(await readdir(resolve(outside, 'skills')), []);
 });
 
@@ -196,4 +196,15 @@ test('CI uses read-only permissions and runs the same aggregate check', async ()
   assert.equal(workflow.permissions.contents, 'read');
   assert.ok(workflow.jobs.validate.steps.some((step) => step.run === 'pnpm install --frozen-lockfile'));
   assert.ok(workflow.jobs.validate.steps.some((step) => step.run === 'pnpm check'));
+});
+
+
+test('fallback scaffold CLI explains its command and rejects invalid names', () => {
+  const script = resolve(root, 'scripts/scaffold-skill.mjs');
+  const usage = spawnSync(process.execPath, [script], { encoding: 'utf8' });
+  assert.equal(usage.status, 1);
+  assert.match(usage.stderr, /pnpm scaffold <skill-name>/);
+  const invalid = spawnSync(process.execPath, [script, '../escape'], { encoding: 'utf8' });
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /名称/);
 });

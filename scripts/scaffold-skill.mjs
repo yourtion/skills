@@ -5,7 +5,8 @@ import { isSkillName } from './validate-skills.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-export async function createSkill(name, root = repositoryRoot) {
+// Fallback only: copy the starter; skill design and authoring belong to skill-creator.
+export async function scaffoldSkill(name, root = repositoryRoot) {
   if (!isSkillName(name)) {
     throw new Error('名称须为 1–64 个小写英文字母、数字或单个连字符，且不能以连字符开头或结尾。');
   }
@@ -23,8 +24,8 @@ export async function createSkill(name, root = repositoryRoot) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    if (process.argv.length !== 3) throw new Error('用法：pnpm new <skill-name>');
-    console.log(`已创建 ${await createSkill(process.argv[2])}，请补全 TODO 后运行 pnpm check。`);
+    if (process.argv.length !== 3) throw new Error('用法：pnpm scaffold <skill-name>');
+    console.log(`仅生成模板骨架：${await scaffoldSkill(process.argv[2])}。请补全 TODO 后运行 pnpm check。`);
   } catch (error) {
     console.error(error.code === 'EEXIST' ? '该 skill 已存在，未覆盖任何文件。' : error.message);
     process.exitCode = 1;

@@ -3,8 +3,8 @@
 ## 添加或修改技能
 
 1. 从最新 `main` 创建工作分支。
-2. 运行 `pnpm install --frozen-lockfile`，首次添加技能用 `pnpm new <skill-name>`。
-3. 编辑 `SKILL.md`，写清触发条件、所需输入、步骤、权限边界、输出与验收方法。删完模板中的 TODO。
+2. 运行 `pnpm install --frozen-lockfile`。优先使用当前 agent 已有、且支持仓库目标路径的 `skill-creator`，先读其说明，明确输出到 `skills/<skill-name>/`。没有或不可用时，才运行 `pnpm scaffold <skill-name>` 复制模板。不要自动安装 `skill-creator` 或改写个人技能库。
+3. 结合具体任务设计并编辑 `SKILL.md`，写清触发条件、所需输入、步骤、权限边界、输出与验收方法。删完模板中的 TODO。
 4. 确有需要再添加 `references/`、`scripts/`、`assets/`；资源路径以技能目录为基准，避免依赖本机绝对路径。
 5. 更新 `skills/README.md` 的技能索引。
 6. 运行 `pnpm check`。对新脚本添加成功、失败和边界场景测试；用 `--list --full-depth` 确认安装器只发现正式技能。
@@ -23,6 +23,8 @@
 
 ## 维护工具约定
 
+- `skill-creator` 负责技能设计、编写和迭代；`pnpm scaffold` 仅是无可用 creator 时的模板复制兜底，不扩展成第二套创作工具。已有技能直接修改，不重新初始化。
+- 无论使用哪种创建方式，仓库校验与 CI 都独立运行；若 creator 提供额外验证，也按其说明执行。
 - 使用 Node.js 内置测试框架和 pnpm。`yaml` 仅用于可靠解析 frontmatter，不使用正则表达式代替 YAML 解析。
 - 修改校验器时同时补正例与反例，区分规范约束、仓库约定和质量提醒。
 - 锁文件随依赖变更一起提交。不要提交 `node_modules/`、本机 agent 目录或生成的测试样本。
