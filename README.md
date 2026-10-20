@@ -34,7 +34,7 @@ skills/
   <skill-name>/
     SKILL.md                 # YAML 元信息 + 工作指令
     references/              # 按需增加的参考资料
-    scripts/                 # 按需增加的可执行脚本
+    scripts/                 # 可执行脚本及其 *.test.mjs 配套测试
     assets/                  # 按需增加的模板或静态资源
 templates/skill/
   SKILL.md.template           # 创建模板，不是可安装技能
@@ -92,6 +92,8 @@ pnpm check
 ```
 
 若所用 `skill-creator` 提供自己的验证步骤，也按其说明执行；本仓库的校验不依赖它。格式通过后仍需在目标 agent 中验证真实任务。完成后，在 [skills/README.md](skills/README.md) 添加名称、用途和 `SKILL.md` 链接。
+
+`pnpm test` 同时运行 `tests/*.test.mjs` 中的仓库维护测试，以及 `skills/*/scripts/*.test.mjs` 中随技能分发的脚本测试；不需要在根目录添加仅转接 import 的测试文件。
 
 ### SKILL.md 最小格式
 
