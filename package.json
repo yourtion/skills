@@ -1,0 +1,19 @@
+{
+  "name": "yourtion-skills",
+  "private": true,
+  "type": "module",
+  "description": "Yourtion 的 Agent Skills 源码与维护工具",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22.20.0"
+  },
+  "scripts": {
+    "new": "node scripts/new-skill.mjs",
+    "validate": "node scripts/validate-skills.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "pnpm test && pnpm validate"
+  },
+  "devDependencies": {
+    "yaml": "2.9.1"
+  }
+}
