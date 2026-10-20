@@ -2,11 +2,11 @@
 
 用于积累、维护和分发 Yourtion 的 Agent Skills。每个 skill 是一个独立目录，入口为 `SKILL.md`，遵循 [Agent Skills 规范](https://agentskills.io/specification)。
 
-当前先搭好维护骨架，尚未添加可安装的 skill。模板不会被识别成正式技能。
+可用技能见 [技能索引](skills/README.md)。模板不会被识别成正式技能。
 
 ## 安装与发现
 
-有正式 skill 后，在使用技能的项目目录中运行：
+在使用技能的项目目录中运行：
 
 ```bash
 # 只查看仓库可用技能，不安装
@@ -17,17 +17,20 @@ npx skills@latest add yourtion/skills
 
 # 指定技能与 agent（将 <skill-name> 替换为真实目录名）
 npx skills@latest add yourtion/skills --skill <skill-name> -a codex
+
+# 安装 TypeScript 变异测试与 CI 技能（合入 main 后可用）
+npx skills add https://github.com/yourtion/skills --skill mutation-testing-ts
 ```
 
 Claude Code 可以将 `codex` 改成 `claude-code`。需要跨项目使用时可显式加 `-g`；安装前先检查技能内容和脚本。支持的 agent、路径与参数以 [官方 CLI 文档](https://github.com/vercel-labs/skills/blob/main/docs/commands.md) 为准。
 
-仓库目前没有正式技能，`--list` 显示 `No valid skills found` 并以非零状态退出属于预期。添加首个技能后应能正常列出。
+`--list` 应能发现 `mutation-testing-ts`，且不应把模板或测试样本列为技能。
 
 ## 仓库结构
 
 ```text
 skills/
-  README.md                  # 正式技能索引，目前为空
+  README.md                  # 正式技能索引
   <skill-name>/
     SKILL.md                 # YAML 元信息 + 工作指令
     references/              # 按需增加的参考资料
@@ -144,13 +147,13 @@ CI 自动检查 PR 的共同祖先到 head；推送 main 时检查 before 到 af
 DISABLE_TELEMETRY=1 npx --yes skills@latest add ./ --list --full-depth
 ```
 
-此命令会下载 CLI 到 npm 缓存，但不会安装技能。空仓库的预期输出同上。模板使用 `.template` 后缀，测试样本只在系统临时目录生成，避免被递归扫描误装。
+此命令会下载 CLI 到 npm 缓存，但不会安装技能。预期只列出正式技能。模板使用 `.template` 后缀，测试样本只在系统临时目录生成，避免被递归扫描误装。
 
 ## 分发与 skills.sh 收录
 
 正式技能合入 main 后，即可通过 `npx skills@latest add yourtion/skills` 从 GitHub 安装；已有安装可用 `npx skills@latest update` 检查和获取更新。技能版本用于本仓库的变更约束，不能代替 CLI 自身的更新检测。
 
-[skills.sh 官方 FAQ](https://www.skills.sh/docs/faq) 说明，榜单收录来自真实的 CLI 安装使用。当前官方文档没有单独的发布步骤或发布接口，因此 CI 不承诺“合入即出现在榜单”，也不制造安装量或开启统计来刷收录。仓库暂时没有正式技能，需先添加技能，才能被安装和后续收录。
+[skills.sh 官方 FAQ](https://www.skills.sh/docs/faq) 说明，榜单收录来自真实的 CLI 安装使用。当前官方文档没有单独的发布步骤或发布接口，因此 CI 不承诺“合入即出现在榜单”，也不制造安装量或开启统计来刷收录。新增技能需先合入 main，才能通过默认分支安装和后续收录。
 
 ## 贡献与验证
 
