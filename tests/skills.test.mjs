@@ -10,7 +10,7 @@ import { scaffoldSkill } from '../scripts/scaffold-skill.mjs';
 import { isSkillName, validateRepository, validateSkill } from '../scripts/validate-skills.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const source = (frontmatter = 'name: example\ndescription: "Run a repeatable task. Use when asked to test."', body = '# Steps\n\n1. Check input.\n2. Return the result.') => `---\n${frontmatter}\n---\n${body}\n`;
+const source = (frontmatter = 'name: example\ndescription: "Run a repeatable task. Use when asked to test."\nmetadata:\n  version: "0.1.0"', body = '# Steps\n\n1. Check input.\n2. Return the result.') => `---\n${frontmatter}\n---\n${body}\n`;
 
 async function temporaryRepository(t) {
   // Keep generated SKILL.md fixtures outside this repo so installers cannot discover them.
@@ -26,13 +26,13 @@ async function addSkill(directory, name = 'example', content = source()) {
 }
 
 test('valid YAML accepts folded descriptions, quoted colons, optional fields, BOM and CRLF', () => {
-  const document = source('name: example\ndescription: >-\n  Explain a task: safely.\n  Use when asked.\nlicense: MIT\ncompatibility: Requires Node.js\nmetadata:\n  author: yourtion\n  version: "1.0"\nallowed-tools: Bash Read');
+  const document = source('name: example\ndescription: >-\n  Explain a task: safely.\n  Use when asked.\nlicense: MIT\ncompatibility: Requires Node.js\nmetadata:\n  author: yourtion\n  version: "1.0.0"\nallowed-tools: Bash Read');
   assert.deepEqual(validateSkill(`\uFEFF${document.replaceAll('\n', '\r\n')}`, 'example'), { errors: [], warnings: [] });
 });
 
 test('length boundaries are accepted', () => {
   const name = 'a'.repeat(64);
-  assert.equal(validateSkill(source(`name: ${name}\ndescription: ${'d'.repeat(1024)}\ncompatibility: ${'c'.repeat(500)}`), name).errors.length, 0);
+  assert.equal(validateSkill(source(`name: ${name}\ndescription: ${'d'.repeat(1024)}\ncompatibility: ${'c'.repeat(500)}\nmetadata:\n  version: "0.1.0"`), name).errors.length, 0);
 });
 
 const invalidDocuments = [
@@ -78,7 +78,7 @@ for (const name of ['', 'UPPER', '-start', 'end-', 'two--hyphens', 'space name',
 }
 
 test('guidance and extension fields produce warnings, not spec errors', () => {
-  const result = validateSkill(source('name: example\ndescription: test\ndisable-model-invocation: true', 'line\n'.repeat(501)), 'example');
+  const result = validateSkill(source('name: example\ndescription: test\ndisable-model-invocation: true\nmetadata:\n  version: "0.1.0"', 'line\n'.repeat(501)), 'example');
   assert.equal(result.errors.length, 0);
   assert.equal(result.warnings.length, 2);
 });
@@ -166,7 +166,7 @@ test('fallback scaffold refuses a symlinked skills parent without creating anyth
 
 
 test('valid YAML aliases retain metadata string types', () => {
-  const result = validateSkill(source('name: example\ndescription: test\nlicense: &license MIT\nmetadata:\n  license: *license'), 'example');
+  const result = validateSkill(source('name: example\ndescription: test\nlicense: &license MIT\nmetadata:\n  license: *license\n  version: "0.1.0"'), 'example');
   assert.deepEqual(result, { errors: [], warnings: [] });
 });
 
@@ -194,6 +194,13 @@ test('CI uses read-only permissions and runs the same aggregate check', async ()
   const workflow = document.toJS();
   assert.ok('pull_request' in workflow.on);
   assert.equal(workflow.permissions.contents, 'read');
+  assert.equal(workflow.jobs.validate.steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
+  const gate = workflow.jobs.validate.steps.find((step) => step.name === 'Check skill versions');
+  assert.equal(gate.env.PR_BASE_SHA, '${{ github.event.pull_request.base.sha }}');
+  assert.equal(gate.env.PR_HEAD_SHA, '${{ github.event.pull_request.head.sha }}');
+  assert.equal(gate.env.PUSH_BEFORE_SHA, '${{ github.event.before }}');
+  assert.equal(gate.env.PUSH_AFTER_SHA, '${{ github.sha }}');
+  assert.match(gate.run, /pnpm check:versions \"\$PR_BASE_SHA\" \"\$PR_HEAD_SHA\" --merge-base/);
   assert.ok(workflow.jobs.validate.steps.some((step) => step.run === 'pnpm install --frozen-lockfile'));
   assert.ok(workflow.jobs.validate.steps.some((step) => step.run === 'pnpm check'));
 });

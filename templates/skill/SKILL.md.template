@@ -1,6 +1,8 @@
 ---
 name: __SKILL_NAME__
 description: "TODO：说明具体能完成什么，以及在什么任务或关键词出现时使用。"
+metadata:
+  version: "0.1.0"
 ---
 
 # __SKILL_NAME__

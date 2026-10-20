@@ -2,6 +2,7 @@ import { lstat, readFile, readdir } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDocument } from 'yaml';
+import semver from 'semver';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const knownFields = new Set(['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools']);
@@ -12,17 +13,17 @@ export function isSkillName(value) {
   return typeof value === 'string' && length(value) <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
 
-export function validateSkill(source, directoryName, path = `${directoryName}/SKILL.md`) {
-  const errors = [];
-  const warnings = [];
-  const error = (message) => errors.push({ path, message });
-  const warn = (message) => warnings.push({ path, message });
+export function isSkillVersion(value) {
+  if (typeof value !== 'string' || value !== value.trim() || !/^\d/.test(value)) return false;
+  const parsed = semver.parse(value);
+  // node-semver uses JS numbers; reject oversized numeric prerelease identifiers too.
+  return parsed !== null && parsed.prerelease.every((item) => !/^\d+$/.test(String(item)) || BigInt(item) <= BigInt(Number.MAX_SAFE_INTEGER));
+}
+
+export function parseSkill(source) {
   const normalized = source.replace(/^\uFEFF/, '').replaceAll('\r\n', '\n');
   const match = normalized.match(/^---\n([\s\S]*?)\n---(?:\n|$)([\s\S]*)$/);
-  if (!match) {
-    error('缺少完整 YAML frontmatter，必须以独立的 --- 行开头和结束。');
-    return { errors, warnings };
-  }
+  if (!match) throw new Error('缺少完整 YAML frontmatter，必须以独立的 --- 行开头和结束。');
   let data;
   try {
     const document = parseDocument(match[1], { uniqueKeys: true, prettyErrors: false });
@@ -31,11 +32,23 @@ export function validateSkill(source, directoryName, path = `${directoryName}/SK
     }
     data = document.toJS({ mapAsMap: true, maxAliasCount: 50 });
   } catch (cause) {
-    error(`YAML 无效：${cause.message}`);
-    return { errors, warnings };
+    throw new Error(`YAML 无效：${cause.message}`);
   }
-  if (!isMap(data)) {
-    error('frontmatter 必须是键值映射。');
+  if (!isMap(data)) throw new Error('frontmatter 必须是键值映射。');
+  return { data, body: match[2] };
+}
+
+export function validateSkill(source, directoryName, path = `${directoryName}/SKILL.md`) {
+  const errors = [];
+  const warnings = [];
+  const error = (message) => errors.push({ path, message });
+  const warn = (message) => warnings.push({ path, message });
+  let data;
+  let body;
+  try {
+    ({ data, body } = parseSkill(source));
+  } catch (cause) {
+    error(cause.message);
     return { errors, warnings };
   }
   if (!isSkillName(data.get('name'))) error('仓库约定：name 须为 1–64 个小写英文字母、数字或单个连字符，且不能以连字符开头或结尾。');
@@ -52,6 +65,10 @@ export function validateSkill(source, directoryName, path = `${directoryName}/SK
   if (data.has('metadata') && (!isMap(data.get('metadata')) || [...data.get('metadata')].some(([key, value]) => typeof key !== 'string' || typeof value !== 'string'))) {
     error('metadata 须为字符串键到字符串值的映射；版本号请加引号。');
   }
+  const metadata = data.get('metadata');
+  if (!isSkillVersion(isMap(metadata) ? metadata.get('version') : undefined)) {
+    error('仓库约定：metadata.version 必须是严格 SemVer 字符串，例如 \"0.1.0\"。');
+  }
   if (data.has('allowed-tools') && (typeof data.get('allowed-tools') !== 'string' || !data.get('allowed-tools').trim())) {
     error('仓库约定：allowed-tools 若提供，须为空格分隔的非空字符串；这是实验性字段。');
   }
@@ -60,8 +77,8 @@ export function validateSkill(source, directoryName, path = `${directoryName}/SK
     if (!knownFields.has(key)) warn(`扩展字段 ${key} 不在通用规范中，请确认目标 agent 支持。`);
   }
   // These checks are repository conventions or recommendations, not spec limits.
-  if (!match[2].trim()) error('仓库约定：SKILL.md 正文不能为空。');
-  if (match[2].trim().split('\n').length > 500) warn('正文超过 500 行，建议将细节拆到 references/，按需读取。');
+  if (!body.trim()) error('仓库约定：SKILL.md 正文不能为空。');
+  if (body.trim().split('\n').length > 500) warn('正文超过 500 行，建议将细节拆到 references/，按需读取。');
   if (/TODO|__SKILL_NAME__/.test(source)) warn('仍有模板占位内容，提交前请人工确认。');
   return { errors, warnings };
 }

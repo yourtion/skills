@@ -38,7 +38,8 @@ templates/skill/
 scripts/
   scaffold-skill.mjs          # 无可用 skill-creator 时复制模板
   validate-skills.mjs         # 格式与仓库约定检查
-tests/skills.test.mjs         # 正反例与模板兜底测试
+  check-versions.mjs          # Git 差异与技能版本检查
+tests/                       # 格式、模板兜底与版本策略测试
 .github/workflows/validate.yml
 AGENTS.md                    # 仓库内 agent 协作约定
 CONTRIBUTING.md              # 人类贡献流程
@@ -54,7 +55,6 @@ CONTRIBUTING.md              # 人类贡献流程
 git clone https://github.com/yourtion/skills.git
 cd skills
 pnpm install --frozen-lockfile
-
 ```
 
 ### 创建或改进技能：优先 skill-creator
@@ -96,6 +96,8 @@ pnpm check
 ---
 name: my-skill
 description: "说明具体功能与触发场景，例如用户要求审查某类文件时使用。"
+metadata:
+  version: "0.1.0"
 ---
 
 # my-skill
@@ -105,12 +107,35 @@ description: "说明具体功能与触发场景，例如用户要求审查某类
 
 - `name` 与目录名一致，最长 64 个字符。本仓库进一步约定使用小写英文字母、数字和连字符，不以连字符开头或结尾，不连续使用连字符；通用规范也支持部分 Unicode 名称。
 - `description` 是 1–1024 个字符的非空字符串，应同时回答“做什么”和“何时使用”。
-- 可选字段包括 `license`、`compatibility`、`metadata` 和实验性的 `allowed-tools`。`metadata` 的键和值均为字符串，版本号如 `"1.0"` 要加引号。`license`、`allowed-tools` 若提供，本仓库要求使用非空字符串。
+- 通用规范中 `metadata` 是可选字段；本仓库为版本管理额外要求 `metadata.version`，使用 SemVer 字符串，例如 `"0.1.0"`。`metadata` 的键和值均为字符串。
+- 其他可选字段包括 `license`、`compatibility` 和实验性的 `allowed-tools`。`license`、`allowed-tools` 若提供，本仓库要求使用非空字符串。
 - `compatibility` 若提供，长度为 1–500 个字符，用于说明必要的工具或环境。
 - 正文非空是本仓库的质量要求。少于 500 行是推荐项，超出时仅提醒；较长资料可拆到 `references/` 并从正文链接。
 - 未知 frontmatter 字段仅提醒，应确认目标 agent 的支持情况。工具声明不代替运行环境的真实权限和用户确认。
 
 校验会返回具体文件和错误；有错误时退出码为 1。扩展字段、长正文和遗留 TODO 以提醒输出，仍需人工审查。本地资源链接是否有效、指令是否有用，需要另行验证；格式检查不代表行为验证通过。
+
+### 技能版本策略
+
+每个技能独立维护 `metadata.version`，模板初始值为 `"0.1.0"`；通过 `skill-creator` 创建的技能也须补齐此字段。这是仓库约定，不是 Agent Skills 通用必填项。
+
+- 新增技能须有合法版本。已有技能目录内任何已跟踪文件变化都须严格升版，包括正文、脚本、参考资料、资源、文件删除和可执行权限变化。
+- 根目录文档、维护工具和 `skills/README.md` 索引变化不要求技能升版。
+- 完整删除一个技能不需要新版本；只删入口但留下资源会失败。重命名视为删除旧身份并新增技能，不保留跨名称的版本连续性，须在 PR 中说明。
+- 无版本的旧技能首次迁移时可补一个合法版本；一旦已有版本，不得移除。基线版本存在但无效时会失败，需要先查明历史。
+- 使用 [SemVer](https://semver.org/) 规则：修正通常升 patch、新增能力升 minor、不兼容变化升 major。CI 只判断严格递增，具体升级幅度由作者审查。预发布按 SemVer 优先级比较，只修改 `+build` 信息不算升级。
+- 使用 `node-semver` 严格解析；仓库限制版本总长不超过 256 字符，数字分量和纯数字预发布标识不超过 `9007199254740991`，避免 JavaScript 精度丢失。不接受 `v` 前缀、缺少 patch、前导零或首尾空白。
+
+编辑版本后，本地可检查已提交的分支差异：
+
+```bash
+# 先确保本地已有完整历史和 origin/main；此命令比较提交，不包含未提交改动
+pnpm check:versions origin/main HEAD --merge-base
+```
+
+CI 自动检查 PR 的共同祖先到 head；推送 main 时检查 before 到 after。初始推送的全零 before 显式视为空树。缺少基线、共同祖先或完整历史时失败，不静默跳过；Git 路径或技能入口不是有效 UTF-8 时同样失败，避免错误比较。普通 `pnpm check` 检查当前工作区的格式和测试，差异版本检查由上面的命令或 CI 另行执行。
+
+要真正阻止不合规合并，需要把 `validate (22.20.0)` 和 `validate (24)` 设置为 main 的 required status checks，并限制绕过与直接推送。本仓库提供工作流，尚未替你修改 GitHub 保护规则；main 上的 push 检查本身只是提交后的验证。
 
 ### 验证安装器发现行为
 
@@ -120,6 +145,12 @@ DISABLE_TELEMETRY=1 npx --yes skills@latest add ./ --list --full-depth
 ```
 
 此命令会下载 CLI 到 npm 缓存，但不会安装技能。空仓库的预期输出同上。模板使用 `.template` 后缀，测试样本只在系统临时目录生成，避免被递归扫描误装。
+
+## 分发与 skills.sh 收录
+
+正式技能合入 main 后，即可通过 `npx skills@latest add yourtion/skills` 从 GitHub 安装；已有安装可用 `npx skills@latest update` 检查和获取更新。技能版本用于本仓库的变更约束，不能代替 CLI 自身的更新检测。
+
+[skills.sh 官方 FAQ](https://www.skills.sh/docs/faq) 说明，榜单收录来自真实的 CLI 安装使用。当前官方文档没有单独的发布步骤或发布接口，因此 CI 不承诺“合入即出现在榜单”，也不制造安装量或开启统计来刷收录。仓库暂时没有正式技能，需先添加技能，才能被安装和后续收录。
 
 ## 贡献与验证
 
