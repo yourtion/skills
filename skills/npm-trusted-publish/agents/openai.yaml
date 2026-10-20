@@ -1,0 +1,4 @@
+interface:
+  display_name: "npm 自动发布"
+  short_description: "接入和优化 GitHub Actions npm OIDC 自动发包与失败重跑流程"
+  default_prompt: "使用 $npm-trusted-publish 为当前项目接入或优化 npm 自动发布，并验证发布产物和重跑行为。"
