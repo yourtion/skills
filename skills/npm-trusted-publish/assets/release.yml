@@ -48,6 +48,7 @@ jobs:
         id: pack
         run: node scripts/npm-release.mjs pack "$RELEASE_TAG" "$RUNNER_TEMP/npm-release"
       # Configure npm Trusted Publisher with this repository and workflow filename.
+      # Allowed actions must permit npm publish (direct publishing).
       # No GitHub environment, no NPM_TOKEN. Public OIDC publish adds provenance.
       - name: Publish validated tarball to npm
         env:

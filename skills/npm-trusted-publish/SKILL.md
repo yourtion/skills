@@ -2,7 +2,7 @@
 name: npm-trusted-publish
 description: 为 npm 包接入、修复或评审 GitHub Actions 自动发包，使用 Trusted Publishing/OIDC，覆盖 tag 与版本校验、发布产物检查、预发布渠道、失败重跑、monorepo 依赖顺序和 GitHub Release。当用户提到 CI 发包、npm 自动发布、Trusted Publisher、OIDC、tag release、发包重跑或 npm provenance 时使用。不用于仅运行测试的 CI、网站部署、Docker/PyPI 等非 npm 发布，或只发布本技能仓库本身。
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 # npm 自动发布与 Trusted Publishing
@@ -42,6 +42,7 @@ monorepo、Obsidian 附件与已有项目评审按 [适配说明](references/ada
 ## 4. 写明一次性配置与操作
 
 - 写出准确的 npm Trusted Publisher owner、repository、workflow **文件名**、environment；没有 GitHub environment 时留空，重命名或加入 environment 后同步 npm 设置。每个 npm 包分别绑定。
+- 按实际发布模式设置 Trusted Publisher 的 **Allowed actions**：本模板执行 `npm publish`，必须允许直接发布。OIDC 验证身份，动作权限决定能否直接发包；不要把该开关误认成传统 token 发布权限。用户只允许 `npm stage publish` 时，应采用暂存后审批的流程，不能承诺当前模板会自动公开包。详见适配说明。
 - 不新增 NPM_TOKEN 来掩盖 OIDC 问题。区分“代码已提交”和“npm 后台已绑定”；只有实际证据才能声称配置完成。首次新包的引导方式按 npm 当下官方支持执行。
 - 说明 npm 公开 OIDC 发布的 provenance 与 GitHub 附件 attestation 是两套机制；只有需要附件证明时才添加 attestations 权限和 action。
 - 说明改版本、合入发布分支、推送 tag、查看结果、失败后重跑原 tag，以及代码变更须使用新 npm 版本。

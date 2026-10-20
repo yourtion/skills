@@ -5,6 +5,8 @@
 - [Trusted Publishers 官方文档](https://docs.npmjs.com/trusted-publishers/) 是认证要求的依据；核对当前支持的 CI runner 和 npm 版本，不能仅依据旧项目注释。
 - npm CLI >=11.5.1 支持 Trusted Publishing；GitHub job 需要 `id-token: write`。模板使用 GitHub 托管 `ubuntu-latest` 和 Node 24，不全局安装浮动最新版 npm。
 - npm 后台为每个包添加 GitHub Actions publisher：owner、repo、workflow filename（例如 `release.yml`，不是 display name 或完整路径）、可选 environment，大小写准确。没声明 job environment 就留空。
+- 配置 publisher 的 **Allowed actions**：模板执行 `npm publish`，必须允许它直接发布。这个动作权限授予匹配的 OIDC workflow，不是开放本地任意用户发包。若仅允许 `npm stage publish`，CI 只能暂存，需维护者通过 CLI 或 npm 网站完成带 2FA 的审批后才公开；需要按该模式另行适配流程，不能直接照用当前模板。
+- 包级 Publishing access 的 “Require two-factor authentication and disallow tokens” 限制传统 token，不影响 OIDC Trusted Publisher。它可以与上述允许 `npm publish` 同时启用。区分身份验证、publisher 动作授权、传统 token 限制，不能根据一个开关推断另外两项配置。
 - npm Trusted Publisher 无需 NPM_TOKEN；模板不向 setup-node 传 registry-url，避免生成 token 占位配置。查询和发布显式使用 npmjs.org。审查项目自带 .npmrc、publishConfig 和其他认证配置，避免发布到错误 registry 或遗留 token 干扰。不要删除或打印用户凭据。
 - 新包没有设置页面时，按当下官方支持的首次创建方式引导；不要承诺仅靠 workflow 能创建并自动绑定。已有 token 流程迁移时先验证 OIDC，再按用户授权管理旧凭据。
 - 公开仓库通过 npm OIDC 发布通常自动获得 provenance；不要把 `id-token: write`、`--provenance` 或本地 dry-run 当作已验证的 npm 认证。
@@ -43,6 +45,7 @@
 | beta/rc 没有显式 dist-tag | next/指定渠道，并设置 GitHub prerelease |
 | 硬编码另一项目的包名、版本或目录 | 从目标 manifest / workspace 读取并校验 |
 | `pnpm publish` 直接假定支持 OIDC | 核对实际 pnpm/npm 支持；可让 npm CLI 发布已转换的 tarball |
+| OIDC 已配置但直接发布未获授权 | 核对 Trusted Publisher 的 Allowed actions 是否允许 `npm publish`；不要改用长期 token 绕过 |
 | 用 tag filter 代替版本校验 | 严格校验版本和发布分支归属 |
 | 只有 release 作业测试 helper | 将发布 helper 测试也加入普通 PR CI |
 
