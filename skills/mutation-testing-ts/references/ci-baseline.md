@@ -11,16 +11,69 @@ Stryker 会比较变异源码和运行器提供的测试内容。测试内容/�
 建议结构：
 
 ```text
-mutation-<baseline-namespace>-v1-<OS>-node<Node>-<compatibility-hash>-<run-id>-<attempt>
+mutation-<baseline-namespace>-v2-<OS>-node<Node>-<compatibility-hash>-<run-id>-<attempt>
 ```
 
 - namespace 区分包、工作目录和共享基线；单包可以使用 default，monorepo 每个包必须独立。
-- 兼容性 hash 覆盖依赖锁文件、package.json、workspace/包管理器配置、Stryker 配置、测试运行器配置、tsconfig、快照、测试辅助文件与 fixture。按实际导入补充脚本、全局 setup、非变异源码、资源文件等。
-- 环境变量、外部服务数据等不能由 hashFiles 自动覆盖。配置稳定的环境标识或禁用复用，不把凭据值放进 key。
-- 普通变异源码与可被 Stryker 正确跟踪的测试文件不纳入 hash，否则每次改测试都会失效。声明文件并不被 mutate 跟踪，必要时纳入兼容性 hash。
-- 排除测试文件时精确匹配扩展名；`!**/*.test.*` 还可能排除 `.test.ts.snap`，造成快照变更被漏掉。
+- 兼容性 hash 覆盖依赖锁文件、package.json、workspace/包管理器配置、Stryker 配置、测试运行器配置、tsconfig、快照、测试辅助文件与 fixture，以及非变异源码、跨包依赖和资源文件。
+- 模板默认哈希全部 Git 跟踪文件；确认 Stryker 跟踪能力后，才显式排除普通变异源码与测试。这样新增辅助目录自动失效，不需要不断扩展目录白名单。保守默认下，源码、测试乃至文档变化也会重建；这是尚未审核排除范围时的成本。
+- 环境变量、外部服务数据、Git 未跟踪或忽略的生成文件等不能由此脚本自动覆盖。配置稳定的环境标识、将必要输入提交到 Git，或在这些输入变化时禁用复用；不把凭据值放进 key。
 - GitHub cache 不可变，`run-id + attempt` 确保同一提交重跑、手动 full 都能保存新结果。restore 仅使用兼容性前缀，取该作用域下最近创建的匹配缓存。
 - 如果 CI 的 Node 使用浮动大版本，日常补丁升级通常不改变 namespace；遇到运行时语义变化必须更换环境版本标识或强制重建。要求严格复现时固定完整 Node 版本并加入 key。
+
+## 输入策略与清单验证
+
+把 [baseline-inputs.mjs](../scripts/baseline-inputs.mjs) 复制到目标项目的
+`.github/scripts/baseline-inputs.mjs`，把 [策略模板](../assets/mutation-cache-inputs.json) 复制到
+`.github/mutation-cache-inputs.json`，与工作流一起提交。脚本使用 Node.js 22.20+ 内置 API 与 Git，
+无 npm 依赖，不加载或执行目标项目的 JS 配置。两份文件的内容本身始终参与键计算。
+
+策略只包含两个正向 glob 数组，路径从 Git 根目录开始、使用 `/`，不接受 `!`、绝对路径或 `..`：
+
+- `trackedByStryker`：已验证由 Stryker 跟踪、可从兼容性摘要中省略的源码和测试。默认空数组。
+- `alwaysHash`：覆盖上面的排除，例如 mutate 范围内实际被排除的辅助源码或生成代码。
+
+以 `mutate: ["src/lib/**/*.ts", "!src/lib/**/*.d.ts"]`、Vitest `include: ["src/test/test*.ts"]`
+为例，确认 runner 能报告测试内容与位置后，可配置：
+
+```json
+{
+  "trackedByStryker": ["src/lib/**/*.ts", "src/test/test*.ts"],
+  "alwaysHash": []
+}
+```
+
+此时 `src/test/setup.ts`、`src/test/helper.ts`、`src/test/utils/**`、`packages/**/src/**`
+和新提交的 fixture 均自动进入哈希；改源码/普通测试可交给 Stryker 增量比较。对于常规
+`*.test.ts` / `*.spec.ts` 项目，必须按真实 include 范围填写；不能照抄此处的命名约定。
+若只变异 `src/lib` 的一部分，必须缩小 glob 或在 `alwaysHash` 中保留不参与变异的文件。
+
+即使排除 glob 过宽，脚本也只允许省略 JS/TS 源文件；`.d.ts` / `.d.mts` / `.d.cts` 声明、
+`.snap`、JSON 等其他输入仍会哈希。但它不会推断 TypeScript 导入图，也无法证明某个 `.ts` 文件
+确实由 Stryker 跟踪；误将 setup/helper 归入排除仍然会出错，必须检查清单和运行验证。
+
+```bash
+# 在仓库根目录调用；子目录调用需调整脚本路径，配置参数仍从 Git 根目录解析
+node .github/scripts/baseline-inputs.mjs .github/mutation-cache-inputs.json --list
+node .github/scripts/baseline-inputs.mjs .github/mutation-cache-inputs.json
+```
+
+`--list` 输出 JSON，分别列出 `hashedFiles`、`strykerTrackedFiles` 和 `hash`，不输出文件内容。
+工作流也打印清单，便于 review。摘要排序后包含路径、执行权限和当前工作区文件内容，新增、删除、
+重命名均影响键；不使用 Git index 中的旧内容代替本地编辑。
+
+在临时 Git 工作区逐项验证：
+
+| 改动 | 已适配排除后的预期 |
+| --- | --- |
+| setup、helper、fixture、快照、锁文件、配置、未变异跨包源码 | 键改变 |
+| 新目录中的辅助文件（先 `git add`） | 键改变 |
+| 仅变异源码、runner 正确跟踪的测试内容 | 键不变，由 Stryker 比较内容差异 |
+| 策略或缓存键脚本自身 | 键改变 |
+
+没有配置排除时，源码和测试变化也应改变键。摘要稳定性和失效验证不能代替 skill 中的三次真实
+Stryker 运行。Git 命令失败、配置错误、输入缺失或非普通文件（符号链接/子模块）时脚本直接失败，
+不生成可复用键；先明确这些输入如何追踪，必要时移除基线缓存并使用全量流程。
 
 ## 读写权限与并发
 
