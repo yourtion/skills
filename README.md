@@ -17,14 +17,11 @@ npx skills@latest add yourtion/skills
 
 # 指定技能与 agent（将 <skill-name> 替换为真实目录名）
 npx skills@latest add yourtion/skills --skill <skill-name> -a codex
-
-# 安装 TypeScript 变异测试与 CI 技能（合入 main 后可用）
-npx skills add https://github.com/yourtion/skills --skill mutation-testing-ts
 ```
 
 Claude Code 可以将 `codex` 改成 `claude-code`。需要跨项目使用时可显式加 `-g`；安装前先检查技能内容和脚本。支持的 agent、路径与参数以 [官方 CLI 文档](https://github.com/vercel-labs/skills/blob/main/docs/commands.md) 为准。
 
-`--list` 应能发现 `mutation-testing-ts` 和 `npm-trusted-publish`，且不应把模板或测试样本列为技能。
+`--list` 应能发现[技能索引](skills/README.md)中的正式技能，且不应把模板或测试样本列为技能。
 
 ## 仓库结构
 
