@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, writeFile, rm, symlink, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { parse } from 'yaml';
 import { baselineInputs } from '../skills/mutation-testing-ts/scripts/baseline-inputs.mjs';
@@ -96,6 +96,15 @@ test('guard rejects legacy/corrupt report, semantic changes, changed invocation 
  assert.throws(() => run({ args: [...args, '--incrementalFile=other.json'] }), /CLI覆盖/);
  assert.throws(() => run({ reportFile: 'package.json' }), /Git跟踪/);
  assert.throws(() => run({ reportFile: '../outside.json' }), /Git工作区/);
+});
+test('guard promptly rejects exact-parent and external report paths without hanging', async t => {
+ const { cwd } = await fixture(t); const wrapper = resolve(skill, 'scripts/run-mutation.mjs');
+ for (const reportFile of ['..', '../outside.json', resolve(cwd, '../outside.json')]) {
+  const code = `import { runMutation } from ${JSON.stringify(pathToFileURL(wrapper).href)}; runMutation(${JSON.stringify({ cwd, configFile: policy, reportFile })});`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 3000 });
+  assert.equal(result.error, undefined, `path rejection must not time out: ${reportFile}`);
+  assert.equal(result.status, 1, reportFile); assert.match(result.stderr, /Git工作区/);
+ }
 });
 test('guard detects inputs changed during execution and rejects symlink report parents', async t => {
  const { cwd } = await fixture(t); const args = ['-e', `const fs=require('fs');fs.mkdirSync('reports',{recursive:true});fs.writeFileSync('reports/x.json','{"files":{}}');fs.writeFileSync('src/api.ts','changed');`];

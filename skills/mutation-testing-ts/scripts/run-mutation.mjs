@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { lstatSync, readFileSync, writeFileSync, renameSync, mkdirSync, rmSync, existsSync } from 'node:fs';
-import { resolve, relative, dirname, isAbsolute } from 'node:path';
+import { resolve, relative, dirname, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baselineInputs } from './baseline-inputs.mjs';
 const self = fileURLToPath(import.meta.url);
@@ -12,7 +12,7 @@ export function runMutation({ cwd = process.cwd(), configFile, reportFile, comma
   const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }).trim();
   const report = resolve(cwd, reportFile), sidecar = `${report}.inputs.json`;
   const rel = relative(root, report);
-  if (!rel || rel.startsWith('../') || isAbsolute(rel) || rel === configFile) throw new Error('报告必须位于目标Git工作区内的独立路径');
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel) || rel === configFile) throw new Error('报告必须位于目标Git工作区内的独立路径');
   // A report must never overwrite a tracked input or traverse symlinked output directories.
   const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root }).toString().split('\0');
   for (const path of [report, sidecar]) {
