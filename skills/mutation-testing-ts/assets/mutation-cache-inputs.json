@@ -1,4 +1,9 @@
 {
+  "schema": 3,
   "trackedByStryker": [],
-  "alwaysHash": []
+  "alwaysHash": [],
+  "nonSemanticFiles": [],
+  "packageVersionFiles": [],
+  "npmLockVersionFiles": [],
+  "environment": []
 }

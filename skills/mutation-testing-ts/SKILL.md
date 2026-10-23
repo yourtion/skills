@@ -1,36 +1,26 @@
 ---
 name: mutation-testing-ts
-description: 为 TypeScript/JavaScript 项目接入、修复或评审 StrykerJS 变异测试及 CI，涵盖 Vitest/Jest 适配、首次全量基线、PR 复用主分支基线增量执行、主分支更新基线、缓存失效和强制重建。当用户提到变异测试、mutation testing、Stryker、增量变异测试或变异测试 CI 时使用。仅用于 TypeScript/JavaScript 变异测试，不用于普通覆盖率、常规 CI 或数据库 mutation 操作。
+description: 为 TypeScript/JavaScript 项目接入、修复或评审 StrykerJS 变异测试及 CI，涵盖 Vitest/Jest 适配、可信主分支基线、PR 只读复用、依赖与运行环境失效、本地旧报告保护和强制重建。当用户提到变异测试、mutation testing、Stryker、增量变异测试或变异测试 CI 时使用。仅用于 TypeScript/JavaScript 变异测试，不用于普通覆盖率、常规 CI 或数据库 mutation 操作。
 metadata:
-  version: "0.2.1"
-  short-description: TypeScript 变异测试接入与 CI 增量基线
+  version: "0.3.0"
+  short-description: TypeScript 变异测试与语义输入基线保护
 ---
 
 # TypeScript 变异测试与 CI
 
-将变异测试变成可重复执行的工程流程。默认采用 StrykerJS，在现有测试运行器上接入，沿用项目的包管理器、Node 版本、CI 平台和开发约定。
+沿用项目的包管理器、Node、测试运行器及协作约定。缓存发现和变异结果有效性是两道判断：能恢复报告不等于能复用结果。默认保护正确性，只复用相同语义输入；未经影响分析的源码、测试变化保守重测。
 
-## 交付内容
+## 1. 检查项目与边界
 
-1. 与项目兼容的 Stryker 配置和依赖锁文件。
-2. 增量命令 `mutation` 和强制重建命令 `mutation:full`，沿用已有同义命令也可。
-3. CI 工作流：首次全量、PR 读取主分支基线、主分支成功后保存基线。
-4. 可预览和验证的缓存输入策略，以及简洁的维护说明：报告位置、缓存失效、手动重建、评分门禁和验证范围。文档落点见第 6 节。
+- 阅读适用 AGENTS.md、README、贡献指南，检查分支与未提交修改；先确定目标项目，不在无关目录生成配置。
+- 确认真实默认分支、workspace、packageManager、Node engines、runner与锁定版本、源码和测试范围、已有mutation接入。
+- 查询对应版本官方兼容要求，core/runner版本匹配；不要把案例版本当通用要求。Vitest从[配置模板](assets/stryker.vitest.config.json)适配，Jest/monorepo等先读[适配说明](references/adaptation.md)。
+- 区分被测产品依赖与测试工具依赖；dependencies、devDependencies、peer/optional、overrides、patch、锁文件、setup/config都可能改变变异结果，不能仅哈希prod依赖或排除整个package.json。
+- 不自动设置分数门禁、保护规则、外部服务或Secret，不擅自发布或合并。
 
-## 1. 检查项目
+## 2. 配置 Stryker 与统一入口
 
-- 阅读适用的 AGENTS.md，检查工作区变更、当前分支和用户指定分支。保留用户未提交的工作。
-- 无法从当前工作区定位目标项目或 package.json 时，先询问项目路径或仓库链接，不在无关目录生成配置。可从现有配置推断的信息不重复询问。
-- 确认实际主分支名称、包管理器及其固定版本、Node engines、测试运行器及版本、源码与测试目录、模块类型、现有 CI。
-- 检查已有 Stryker 配置、脚本和锁文件，优先扩展已有接入。
-- 安装前查阅当前 StrykerJS 与对应 runner 的官方兼容性说明。core 和 runner 使用互相兼容的版本，检查 Node 要求；不要永久照抄本案例的版本号。
-- Vitest 读取 [配置模板](assets/stryker.vitest.config.json)；Jest、自定义运行器、monorepo 或特殊运行环境先读取 [适配说明](references/adaptation.md)。
-
-## 2. 接入本地命令
-
-使用项目既定的包管理器安装开发依赖并更新对应锁文件。Vitest 使用 `@stryker-mutator/core` 和 `@stryker-mutator/vitest-runner`；Jest 使用对应的 jest-runner，按官方说明配置。
-
-增量模式需显式启用：
+安装当前runner所需开发依赖并更新项目原有锁文件。确认原始测试通过，再启用独立报告：
 
 ```json
 {
@@ -39,93 +29,52 @@ metadata:
 }
 ```
 
-增加或复用以下 package.json scripts：
+将 `reports/`、`.stryker-tmp/` 和非输入的生成产物加入忽略列表。mutate指向业务源码，排除声明/生成代码；不要为分数任意删除业务分支或忽略静态变异。
+
+复制[baseline-inputs.mjs](scripts/baseline-inputs.mjs)、[run-mutation.mjs](scripts/run-mutation.mjs)到项目 `.github/scripts/`，复制[策略模板](assets/mutation-cache-inputs.json)到 `.github/mutation-cache-inputs.json`。脚本无npm依赖，要求Git与Node22.20+；不得依赖agent安装目录。
+
+本地和CI均调用guard入口，避免仅CI换key而本地仍直接复用旧报告：
 
 ```json
 {
-  "mutation": "stryker run",
-  "mutation:full": "stryker run --force"
+  "scripts": {
+    "mutation": "node .github/scripts/run-mutation.mjs .github/mutation-cache-inputs.json reports/stryker-incremental.json -- node node_modules/@stryker-mutator/core/bin/stryker.js run",
+    "mutation:full": "npm run mutation -- --force"
+  }
 }
 ```
 
-- 将 `.stryker-tmp/` 和 `reports/` 加入忽略列表；已有报告目录另有用途时用独立子目录。
-- mutate 指向业务源码，排除声明文件、生成代码及构建产物。不要为了提高分数随意排除业务分支、忽略静态变异或扩大超时。
-- 增量模式没有历史文件时会在本次完整 mutate 范围内全量执行；`--force` 忽略已有结果并重建基线。
-- 保留现有测试行为，先确认原始测试通过。依赖隔离、原生运行时等问题按适配说明处理。
+按项目包管理器调整full命令。已有多项目动态报告路径时用小型Node launcher调用 `runMutation` export，显式校验project与报告路径。保留必要环境（如ISLIB），使计算key与执行时一致。不要让日常入口覆盖报告路径或关闭incremental；不同作用域用独立报告和配置。
 
-## 3. 接入 CI 基线
+## 3. 审核输入与 CI
 
-先读取 [CI 基线设计](references/ci-baseline.md)。GitHub Actions 可从 [工作流模板](assets/mutation.yml) 开始适配；模板默认 main、Node 22、pnpm、根目录单包和 TypeScript 测试文件，复制后必须检查这些假设。
+先读[CI基线设计](references/ci-baseline.md)，从[工作流模板](assets/mutation.yml)适配分支、Node、包管理器、namespace和工作目录。
 
-将 [缓存键脚本](scripts/baseline-inputs.mjs) 复制到目标项目的 `.github/scripts/`，将
-[输入策略模板](assets/mutation-cache-inputs.json) 复制到 `.github/mutation-cache-inputs.json`。
-脚本无第三方依赖，需要 Git 与 Node.js 22.20+。不要让目标 CI 依赖 agent 的安装目录。
+- 默认纳入Git跟踪文件和未忽略的untracked文件；新本地helper尚未git add也影响摘要。被忽略但参与测试的输入必须显式建模或强制full。
+- `nonSemanticFiles`只列精确路径及审核理由，不允许宽泛glob。文档/发布说明只有不被测试、构建或运行代码读取时才可忽略；不要全局忽略Markdown。
+- `packageVersionFiles`只在验证自身version不会影响被测行为后使用；其余所有字段继续哈希。CLI版本输出、npm_package_version、构建注入版本均需保守。锁文件默认完整哈希；npm root版本的窄规范化见基线设计，不支持的格式不可猜测过滤。
+- `trackedByStryker`只影响兼容性键清单，不能授权任意源码/测试结果复用。guard的semanticHash始终包括这些文件，变化仍full；Stryker对跨函数影响和静态变异存在限制。
+- runtime含真实Node完整版本、OS/arch/kernel、runner image、受控环境及实际安装的直接依赖manifest；锁文件负责完整解析图。外部服务/生成物/其他环境输入需额外明确建模。
+- 用 `node .github/scripts/baseline-inputs.mjs .github/mutation-cache-inputs.json --list`审阅清单。策略与实现自身必须参与摘要。
+- 使用普通pull_request和分离restore/save。PR只读，成功main才保存报告及`.inputs.json`配对文件；默认contents:read，checkout不保留凭据。
+- 升级namespace到v3，只恢复完整相同前缀，不fallback旧namespace/跨依赖前缀；唯一key追加run-id+attempt。首次main需要完整重建，PR产物不是共享基线。
+- 保留手动full与失败报告；main不主动取消，但不能承诺FIFO或每个提交都执行。
 
-先保留 `trackedByStryker: []`：默认哈希全部 Git 跟踪文件，新目录中的辅助输入自动纳入。
-检查实际 `mutate` 范围、测试 include/testMatch 和导入关系后，才把已确认由 Stryker 跟踪的源码及
-测试文件 glob 加入 `trackedByStryker`；范围内被排除的生成代码、辅助文件等用 `alwaysHash` 留在哈希中。
-不要根据常见文件后缀或目录名自动排除测试辅助代码。具体示例与限制见基线设计。
+## 4. 真实验证
 
-运行脚本的 `--list` 查看最终哈希清单与交给 Stryker 跟踪的清单，按下方验证步骤实际改动文件检查键变化。
-如果无法确认排除范围，保留保守策略并说明更多改动会触发全量，不能为了复用速度放宽排除。
+先读[运行器有效性与隔离](references/runner-validation.md)。dry run成功、配置可加载、字段测试通过都不能代替真实变异执行。
 
-| 场景 | 执行 | 基线写入 |
-| --- | --- | --- |
-| 首次接入、缓存缺失或不兼容 | 全量 | 仅可信主分支成功后保存 |
-| 面向主分支的 PR | 读取主分支基线，增量 | 不保存共享基线 |
-| 推送或合并到主分支 | 增量 | 成功后保存新基线 |
-| 手动 full | 强制全量 | 在主分支成功后保存 |
+1. 执行项目要求的相关lint、类型检查、普通测试和工作流校验；GitHub优先actionlint。原分支已有失败需归因，不能借机删测试。
+2. 验证dep/devDep/peer/optional、脚本/exports/engines、overrides/patch、锁文件、setup/helper、fixture内容及新增删除、快照、runtime/environment均使语义输入失效。实际安装依赖新版本后再做至少一组真实变异对照，不能把修改package字段称为已验证依赖升级。
+3. 在有真实覆盖的小范围、独立报告上做无基线、同语义再次执行、强制full；确认真实执行、同输入复用和force不复用，并逐mutant比较fresh结果。
+4. 注入能杀死或复活变异的helper/fixture或依赖变化，确认guard重测与fresh一致；同时验证旧/损坏报告、缺sidecar、失败/中断、命令或作用域变化不能误用。
+5. 文档/纯version排除必须有审核依据和实测；遇到源码跨函数影响、静态变异新增测试等，不以原生增量日志代替fresh正确性验证。
+6. 小范围验证不等于全项目全量通过；核对成功main的cache-save日志才可声称可信共享基线已建立。记录实际版本、SHA、范围、时间、复用数与未验证项。
 
-实现必须满足：
+smoke使用独立配置（内容需纳入输入清单）设置小mutate范围及 `reports/smoke/incremental.json`，再调用同guard指向该报告。不要把局部报告保存为主分支完整基线；CLI的incrementalFile覆盖被guard禁止。
 
-- 使用分离的缓存 restore/save 操作，PR 不写共享基线。
-- 兼容性前缀包含系统、Node 和输入摘要；脚本及策略本身也必须影响摘要。每次保存追加唯一运行 ID 与 attempt。不可变缓存不能用固定 key 更新。
-- restore fallback 只匹配兼容性前缀，不退回跨依赖或配置版本的宽泛前缀。
-- 主分支运行不主动互相取消；同一 PR 的新提交可取消旧运行。旧基线只影响性能，仍须由 Stryker 检查内容差异。
-- 允许手动 full，缓存缺失时自然退回全量，失败不覆盖基线。保留失败时可用的报告。
-- GitHub Actions 使用普通 `pull_request`，不要在 `pull_request_target` 的特权上下文运行 PR 代码。默认 `contents: read`，不额外引入外部服务或 Secret。
-- 其他 CI 平台沿用相同读写边界，按其缓存作用域和覆盖规则实现，不能直接套用 GitHub 的默认分支缓存行为。
+## 5. 交付与维护
 
-## 4. 验证
+交付配置、锁文件、统一命令、策略清单、CI和简洁维护说明。分开说明作业成功与评分门禁；Survived、NoCoverage、RuntimeError分别报告，不能把变异分数称代码覆盖率或把全部存活称业务缺陷。
 
-使用现有检查验证交付；配置修改通常无需新增测试文件。先读
-[运行器有效性与测试隔离](references/runner-validation.md)，避免把配置能加载或 dry run 成功当作变异有效执行。
-
-1. 运行项目要求的 lint、类型检查和相关测试；发现原分支已有失败时明确归因，必要的格式修复保持最小范围。
-2. 校验工作流语法。GitHub Actions 优先使用 actionlint，单纯 YAML 解析不能验证表达式与权限语义。
-   同时验证缓存输入：用 `--list` 确认 setup/helper、快照、fixture、未变异的跨包依赖、配置及锁文件均在哈希清单。
-   在临时 Git 工作区修改这些文件，确认键变化；新增目录的文件需先 `git add`，确认也改变键。
-   仅当已明确配置排除后，才验证普通变异源码及已跟踪测试的内容变化不改变兼容性键。保留验证记录。
-3. 在有真实测试覆盖的小型源码文件上，用独立的临时 incrementalFile 做三次验证：无基线生成、同样输入再次运行、带 `--force` 强制运行。
-4. 确认第二次确实记录 `result(s) are reused`，第三次不复用结果；首轮和强制轮还需确认已覆盖变异实际执行测试，已知错误被检出。只看到文件存在或命令成功不足以证明增量生效。
-5. 说明首次主分支 CI 负责建立完整范围的共享基线。单文件冒烟不能宣称全项目变异测试通过；PR 成功也不代表主分支基线已经发布，需核对对应 main 提交的基线保存步骤和缓存保存结果。
-6. 按提交和包核对实际验证范围、报告及最终 CI 状态。并行作业尚未结束、部分报告已上传或仍有待执行变异时，明确说明未完成项，不能宣称全量通过。
-
-示例（使用项目包管理器执行）：
-
-```bash
-pnpm mutation --mutate src/example.ts --incrementalFile /tmp/project-mutation-smoke.json
-pnpm mutation --mutate src/example.ts --incrementalFile /tmp/project-mutation-smoke.json
-pnpm mutation:full --mutate src/example.ts --incrementalFile /tmp/project-mutation-smoke.json
-```
-
-`src/example.ts` 是占位路径，必须替换为真实、具有有效测试覆盖且变异数量较少的源码文件；临时基线也要使用本次任务独立路径。不要将局部冒烟结果发布为主分支完整基线。
-
-## 5. 分数与交付说明
-
-- 首次接入先生成可信全量报告。没有用户要求或既有规则时，不凭空设置 `thresholds.break`，也不修改已有阈值。
-- 分开说明“作业运行成功”和“达到评分门禁”。CI 接入本身不会自动设置分支保护或 required status check。
-- 报告各类变异数量；`NoCoverage` 与 `Survived` 分别反映未覆盖和未检出，`RuntimeError` 不计作已检测。存活变异需复核等价性，不能把全部存活项都称为业务缺陷，也不能把变异得分称为代码覆盖率。
-- 先交付可信的接入和基线，再按报告分批优化真实业务测试。优先改善未覆盖逻辑和有业务意义的存活变异；接入、运行器修复和大规模补测可分开提交，保留各自验证证据。
-- 写清首次合并前没有主分支基线，PR 可能全量运行；依赖、配置、快照、辅助文件变化也可能全量重建。
-- 增量运行仍需先执行原始测试以收集测试和覆盖信息，并非仅运行 git diff 对应测试。
-- 静态变异及未跟踪输入存在限制，按需强制全量，见基线设计。不要把复用当作环境变化下的正确性保证。
-- 最终报告配置位置、执行策略、测试证据、验证范围、实际安装/提交/推送状态，以及首次完整基线是否已经建立。
-
-## 6. 文档与验证记录
-
-- 默认不扩写项目主 README，也不自动增加变异专题、分数表或徽章。确需导航时，沿用现有文档索引，最多补一个简短链接；用户指定的文档位置优先。
-- 复用现有贡献指南或开发文档；没有合适位置时，使用独立指南，例如 `docs/MUTATION_TESTING.md`。只保留维护所需的命令、配置入口、范围、报告、CI/缓存、强制重建和当前仍适用的排障说明。
-- 首次得分、逐轮执行记录、测试数量、变异清单、缺陷复现过程和优化前后对比放在 PR 描述、CI job summary 或报告 artifact；原始报告按项目约定忽略，不写入 README 或长期维护指南。
-- 不把本机绝对路径、已忽略的本地报告当作其他贡献者可访问的证据。引用 CI/PR 时标明提交和验证范围；过期快照与当前运行结果分开说明。
-- 若确需保留长期历史，遵循项目现有 ADR、变更记录或专门归档约定，不因交付说明要求额外生成一份长篇接入日志。
+复用项目贡献/开发文档，或独立mutation指南；不默认扩写主README、添加分数表或徽章。长期指南只保留命令、范围、基线读写、失效及重建规则；逐轮得分、日志、耗时与调试过程放交付报告/PR/CI artifact。声明本地修改、提交/推送、验证范围及剩余边界；不把未完成CI或局部冒烟称为全量成功。
