@@ -1,4 +1,4 @@
 interface:
   display_name: "TS 变异测试与 CI"
-  short_description: "接入 StrykerJS 变异测试，保护本地及 CI 基线的语义有效性"
-  default_prompt: "使用 $mutation-testing-ts 为当前项目接入或检查变异测试及 CI：首次全量建基线，审核依赖及运行环境输入，保护本地与 PR 基线复用，验证复用、语义变化与强制重跑。"
+  short_description: "优化 StrykerJS 执行频率与门禁迁移，保护本地及 CI 基线有效性"
+  default_prompt: "使用 $mutation-testing-ts 为当前项目接入或优化变异测试及 CI：评估 main 自动加手动触发、保留 PR 常规检查并核对门禁迁移，审核语义输入与可信基线，验证真实执行、复用与强制重跑，明确 main 失败跟进。"

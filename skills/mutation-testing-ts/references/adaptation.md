@@ -34,10 +34,11 @@ Stryker 在沙箱中执行，node_modules 通常链接到真实安装目录。Vi
 - 每个包使用独立 namespace、报告路径和 concurrency 组；root lockfile、共享 tsconfig、跨包非变异依赖均纳入失效考虑。
 - 调整 cache-dependency-path、缓存输入策略、artifact path 和 baseline path。缓存键脚本从 Git 根目录解析策略 glob，不随 run 的 working-directory 改变；在子目录执行时还需调整脚本和配置参数的位置。
 - 默认哈希整个 Git 仓库的跟踪和未忽略输入，包含跨包源码。`trackedByStryker`只影响缓存发现；guard仍对源码/测试变化保守重测，不能据此排除整个workspace语义输入。共享配置和其他包保留在摘要中。
+- 独立namespace不会自动缩小指纹范围；多个project共用全仓语义输入时，改一处仍可能让所有project重跑。先量测并报告这种成本，不未经依赖影响验证就改成只哈希本包。
 - 跨包依赖不能被本包变异报告跟踪时，变化必须触发失效或全量重跑。
 
 ## 耗时与资源
 
-根据首次全量的实际耗时、内存和 CI 配额设置 concurrency 与 timeout。增量仍有 dry run 的固定成本；不应承诺接入后每次 PR 都只需几秒。
+根据首次全量的实际耗时、内存、提交频率和 CI 预算选择执行频率、concurrency与timeout，默认建议main自动加手动；选项与迁移检查见[CI基线设计](ci-baseline.md)。公开仓库标准runner的免费计算与排队/并发/存储要分别评估。增量仍有dry run固定成本，严格语义指纹在源码/测试变化后可能full；不应承诺接入后每次PR都只需几秒。
 
 静态变异可能需要多次重新加载测试环境，耗时明显。先衡量，不默认 ignoreStatic。耗时预算不足时明确记录尚未完成的完整验证范围，保留可复现命令，不能用单文件高分替代项目全量分数。

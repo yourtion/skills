@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { parse } from 'yaml';
 import { baselineInputs } from '../skills/mutation-testing-ts/scripts/baseline-inputs.mjs';
 import { runMutation } from '../skills/mutation-testing-ts/scripts/run-mutation.mjs';
@@ -116,9 +117,34 @@ test('CLI accepts only known arguments and emits digest or manifest', async t =>
  assert.equal(run(policy).stdout.trim(), read().hash); assert.deepEqual(JSON.parse(run(policy, '--list').stdout), read());
  for (const args of [[], [policy, '--typo'], ['../outside.json']]) { const result = run(...args); assert.equal(result.status, 1); assert.equal(result.stdout, ''); }
 });
-test('workflow preserves main-only writes and caches paired authorization metadata', async () => {
+test('workflow defaults to main push and branch dispatch, with full runs available', async () => {
+ const workflow = parse(await readFile(resolve(skill, 'assets/mutation.yml'), 'utf8'));
+ assert.deepEqual(Object.keys(workflow.on).sort(), ['push', 'workflow_dispatch']);
+ assert.deepEqual(workflow.on.push.branches, ['main']);
+ assert.deepEqual(Object.keys(workflow.on.workflow_dispatch.inputs), ['full']);
+ assert.equal(workflow.on.workflow_dispatch.inputs.full.type, 'boolean');
+ assert.equal(workflow.on.workflow_dispatch.inputs.full.default, false);
+ assert.equal(workflow.concurrency['cancel-in-progress'], false);
+ const run = workflow.jobs.mutation.steps.find(s => s.name === 'Run mutation tests');
+ assert.equal(run.env.FORCE_FULL, '${{ inputs.full == true }}');
+ assert.match(run.run, /pnpm mutation:full/); assert.match(run.run, /pnpm mutation\n/);
+});
+test('workflow saves only successful main push/dispatch and caches paired authorization metadata', async () => {
  const workflow = parse(await readFile(resolve(skill, 'assets/mutation.yml'), 'utf8')); const steps = workflow.jobs.mutation.steps;
  const restore = steps.find(s => s.uses?.startsWith('actions/cache/restore@')); const save = steps.find(s => s.uses?.startsWith('actions/cache/save@'));
  assert.equal(restore.with['restore-keys'].trim(), '${{ steps.baseline-key.outputs.prefix }}-'); assert.match(restore.with.path, /\.inputs\.json/); assert.equal(save.with.path, restore.with.path);
- assert.equal(save.if, "success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"); assert.match(steps.find(s => s.id === 'baseline-key').run, /v3/);
+ // This template uses the JS-compatible subset of Actions expressions.
+ // Exercise the parsed condition with both trusted and untrusted event contexts.
+ for (const event_name of ['push', 'workflow_dispatch', 'pull_request', 'pull_request_target', 'schedule']) {
+  for (const ref of ['refs/heads/main', 'refs/heads/feature', 'refs/pull/1/merge', 'refs/tags/v1']) {
+   for (const success of [true, false]) {
+    const actual = runInNewContext(save.if, { github: { event_name, ref }, success: () => success }, { timeout: 100 });
+    assert.equal(actual, success && ref === 'refs/heads/main' && ['push', 'workflow_dispatch'].includes(event_name), `${event_name} ${ref} success=${success}`);
+   }
+  }
+ }
+ assert.deepEqual(workflow.permissions, { contents: 'read' });
+ assert.equal(steps.find(s => s.uses?.startsWith('actions/checkout@')).with['persist-credentials'], false);
+ assert.equal(save.with.key, '${{ steps.baseline.outputs.cache-primary-key }}');
+ assert.match(steps.find(s => s.id === 'baseline-key').run, /v3/);
 });
