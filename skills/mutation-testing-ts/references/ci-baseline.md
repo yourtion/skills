@@ -1,5 +1,36 @@
 # CI与本地基线有效性
 
+## 执行频率、成本与反馈
+
+默认建议push main自动执行，加workflow_dispatch手动触发；PR继续运行已有lint、类型检查、普通测试、覆盖率与合约测试。这样减少PR反复变更时的昂贵重跑，代价是部分测试强度退化在合入后才发现。main失败要由项目维护者跟进、分析报告并修复/重跑；需要时按项目流程回退，不能因为普通CI通过就忽略失败。
+
+这是一项成本与反馈速度的选择：对必须合前获得结果的高风险项目，可以保留PR执行；main提交密集时，可与用户另议每日/每周执行，但反馈会进一步延后。先量测真实全量耗时与频率，不自动增加定时任务或默认扩大runner规格。
+
+[GitHub计费规则](https://docs.github.com/en/billing/concepts/product-billing/github-actions)说明，公开仓库使用标准GitHub-hosted runner的计算免费；larger runners即使在公开仓库也收费。免费计算不等于没有等待、并发占用或存储成本：artifact与cache有各自的额度/计费规则，报告保留时间和缓存体积仍需控制；私有仓库还需核对所属账户的计算额度与预算，不套用固定分钟数。
+
+模板保留90分钟timeout和14天artifact仅作起点，按真实耗时、报告体积与调查需要调整，保留失败报告。`incremental: true`不保证每次只执行变更部分：本guard对源码、测试、依赖和运行环境变化保守full，只有相同semanticHash才复用。不要为了耗时跳过guard、放宽指纹或降低测试真实性。
+
+## 手动验证高风险分支
+
+workflow_dispatch使用所选分支的代码与工作流；工作流须已存在于默认分支才可手动触发。合入前可对同仓库PR分支手动执行，必要时选择full=true，并在报告中记录实际checkout SHA。示例：
+
+```bash
+gh workflow run mutation.yml --ref <同仓库PR分支> -f full=true
+```
+
+分支名会移动，检查运行详情及checkout日志确认测到的是待审查提交；不能只凭发起成功声称验证完成。外部fork的分支不自动成为base仓库可选ref，按项目受信任流程验证，不能改用pull_request_target运行其代码。分支手动结果只供审查，只读main兼容基线；仅成功main push或main手动运行写共享基线。不增加可在main上下文checkout任意代码的ref输入。
+
+## 从PR必跑迁移的检查
+
+在删除pull_request触发前完成以下检查；记录精确检查名、规则来源和待执行操作，不擅自修改仓库后台保护：
+
+1. 读取branch protection、仓库及组织rulesets，检查required mutation名称（含matrix展开名）、expected app和merge queue；查找聚合门禁的needs、required workflows或可复用工作流调用。无权限读取时把门禁状态标为未核实。
+2. 确认PR原有普通测试、覆盖率、合约测试等仍执行，聚合门禁不再依赖已移走的mutation作业；其余required checks保持有效，使用merge queue时检查相应merge_group触发。
+3. 若mutation被required，先与维护者协调移除/替换该精确门禁，再启用main+manual策略；尚未完成时保留原PR触发并把迁移列为合入前待办，不能直接删触发后宣称可合入。不能用空作业、条件跳过或伪造成功冒充变异通过。
+4. 手动workflow_dispatch运行的job检查不能满足branch ruleset中的PR required check，不能把“手动跑绿”当作旧门禁的替代。确认PR不会出现等待已移除检查的Pending，记录实际读取结果与待维护者处理项。
+
+[GitHub required checks排障](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks)说明了被过滤的工作流持续Pending、条件跳过的job及手动事件的限制；不要用跳过成功掩盖没有执行。
+
 ## 两道判断与保守边界
 
 GitHub cache key负责发现文件；Stryker incremental report负责记录旧变异与测试。恢复成功不代表结果有效，`cache-hit=false`也可能是restore-key前缀恢复；检查cache-matched-key和报告文件。
@@ -35,9 +66,9 @@ Stryker原生增量比较mutant/测试的位置与内容，并使用旧killing t
 
 key形如 `mutation-<project>-v3-<OS>-node<Node>-<hash>-<run-id>-<attempt>`。Node实际完整版本已在hash内；工作流上的大版本标签不是兼容性保证。
 
-分离cache restore/save，成对缓存report与sidecar，restore只使用完整兼容前缀。旧v1/v2没有有效新sidecar，不迁移为可信结果，也不使用宽泛fallback。首次main完整运行成功后保存；PR只读取main兼容基线，不保存共享namespace。手动full在main成功后也生成唯一key；失败报告可上传但不能save。缓存不可变，不能用固定key更新内容。
+分离cache restore/save，成对缓存report与sidecar，restore只使用完整兼容前缀。旧v1/v2没有有效新sidecar，不迁移为可信结果，也不使用宽泛fallback。首次main完整运行成功后保存；其他分支的手动运行只读取main兼容基线，不保存共享namespace。显式启用PR执行时也只读。手动full在main成功后也生成唯一key；失败报告可上传但不能save。缓存不可变，不能用固定key更新内容。
 
-使用普通pull_request，不在pull_request_target特权上下文运行PR代码。默认contents:read，checkout persist-credentials:false，避免与其他不可信工作流共用namespace。GitHub按分支作用域隔离缓存；PR自己的缓存不能作为main基线。main concurrency不主动取消，仍不保证pending FIFO或最新提交必然完成；读取旧基线仍须guard校验。
+仅在项目明确选择PR执行时使用普通pull_request，不在pull_request_target特权上下文运行PR代码。默认contents:read，checkout persist-credentials:false，避免与其他不可信工作流共用namespace。GitHub按分支作用域隔离缓存；PR/分支自己的缓存不能作为main基线。模板main与手动均不主动取消，同一workflow/ref的运行串行；默认并发组只保留一个pending，后续运行可替换旧pending，不能保证每个提交都执行或最新提交必然完成。手动full可能等待main运行，不自动加cancel-in-progress:true而中断基线建立；见[GitHub并发控制](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)。读取旧基线仍须guard校验。
 
 Monorepo为每project设置namespace/report/工作目录与环境。对跨包源、共享配置、build产物来源保守；在key计算与run中保持相同MUTATION_PROJECT、ISLIB等。不能把一个package的局部冒烟报告当全workspace基线。
 
