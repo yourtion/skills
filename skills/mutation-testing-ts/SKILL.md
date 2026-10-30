@@ -21,7 +21,7 @@ metadata:
 
 ## 2. 配置 Stryker 与统一入口
 
-安装当前runner所需开发依赖并更新项目原有锁文件。确认原始测试通过，再启用独立报告：
+新接入或确需调整runner时安装所需开发依赖并更新项目原有锁文件。已有接入先核对现状，纯调度优化沿用已验证的命令、guard与工具链，不重复复制或升级。确认原始测试通过，再启用独立报告：
 
 ```json
 {
@@ -61,12 +61,14 @@ metadata:
 - runtime含真实Node完整版本、OS/arch/kernel、runner image、受控环境及实际安装的直接依赖manifest；锁文件负责完整解析图。外部服务/生成物/其他环境输入需额外明确建模。
 - 用 `node .github/scripts/baseline-inputs.mjs .github/mutation-cache-inputs.json --list`审阅清单。策略与实现自身必须参与摘要。
 - 分离restore/save；仅成功的main push或main手动运行保存报告及`.inputs.json`配对文件。其他分支手动运行只读；显式保留PR执行时使用普通pull_request，PR也只读。默认contents:read，checkout不保留凭据，不使用pull_request_target运行PR代码。
-- 升级namespace到v3，只恢复完整相同前缀，不fallback旧namespace/跨依赖前缀；唯一key追加run-id+attempt。首次main需要完整重建，PR产物不是共享基线。
+- 接入/迁移本guard时使用v3 namespace，只恢复完整相同前缀，不fallback旧namespace/跨依赖前缀；唯一key追加run-id+attempt。首次main需要完整重建，PR产物不是共享基线；纯调度改动不额外更换namespace。
 - 保留手动full与失败报告；main不主动取消，但不能承诺FIFO或每个提交都执行。
 
 ## 4. 真实验证
 
 先读[运行器有效性与隔离](references/runner-validation.md)。dry run成功、配置可加载、字段测试通过都不能代替真实变异执行。
+
+按变更范围验收：仅调整调度，未改runner、依赖、guard、输入策略或被测代码时，复用已有有效性证据，重点检查下述事件矩阵、门禁与读写条件，不额外重复全项目变异执行。缺少既有证据时标明尚未验证，按风险选择独立小范围实测；新接入或改变结果语义/运行环境时执行相关真实变异对照，不把格式校验当行为验证。
 
 1. 执行项目要求的相关lint、类型检查、普通测试和工作流校验；GitHub优先actionlint。原分支已有失败需归因，不能借机删测试。
    核对事件矩阵：PR不自动执行mutation但原有检查仍运行；main push和手动均可执行；分支手动与失败main不save，成功main才save。核实required checks与聚合依赖不会等待已移除的PR作业。
